@@ -17,6 +17,7 @@ An AI‑powered Flutter application that connects users with nearby service work
 9. Running the App
 10. Design System
 11. Known Issues & Limitations
+12. **[Multilingual AI Assistant Guide](MULTILINGUAL_AI_GUIDE.md)** 🌐
 
 ---
 
