@@ -4,8 +4,9 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import '../../../core/ai/ai_providers.dart';
 import '../../../core/ai/gemini_service.dart';
+import '../../../core/controllers/request_controller.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../discovery/presentation/worker_discovery_screen.dart';
+import '../../analysis/presentation/ai_analysis_screen.dart';
 
 class VoiceAgentScreen extends ConsumerStatefulWidget {
   final VoidCallback? onOpenDrawer;
@@ -48,63 +49,13 @@ class _VoiceAgentScreenState extends ConsumerState<VoiceAgentScreen> {
   Future<void> _processVoiceInput(String input) async {
     if (input.isEmpty) return;
 
-    // Check if we already have an interpretation (from voice input)
-    var interpretation = ref.read(emergencyInterpretationProvider).value;
-
-    if (interpretation == null) {
-      // Show loading only if we need to interpret
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(child: CircularProgressIndicator()),
-      );
-
-      try {
-        // Interpret the voice input with Gemini
-        await ref
-            .read(emergencyInterpretationProvider.notifier)
-            .interpret(input);
-
-        // Get the interpretation result
-        interpretation = ref.read(emergencyInterpretationProvider).value;
-
-        if (mounted) {
-          // Close loading dialog
-          Navigator.of(context).pop();
-        }
-      } catch (e) {
-        if (mounted) {
-          Navigator.of(context).pop();
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('Error: ${e.toString()}')));
-        }
-        return;
-      }
-    }
-
-    // Navigate with the interpretation
-    if (mounted && interpretation != null) {
-      // Update search filters based on interpretation
-      final currentFilters = ref.read(searchFiltersProvider);
-      ref
-          .read(searchFiltersProvider.notifier)
-          .update(
-            currentFilters.copyWith(
-              serviceCategory: interpretation.serviceCategory,
-            ),
-          );
-
-      // Navigate to worker discovery screen
-      Navigator.of(
-        context,
-      ).push(MaterialPageRoute(builder: (_) => const WorkerDiscoveryScreen()));
-    } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Unable to process request. Please try again.'),
-        ),
-      );
+    // Use unified request controller for consistent flow
+    try {
+      final controller = createRequestController(ref, context);
+      await controller.handleUserRequest(input);
+    } catch (e) {
+      // Error already handled by controller
+      print('Voice input processing error: $e');
     }
   }
 
@@ -824,12 +775,24 @@ class _VoiceListeningPanelState extends ConsumerState<_VoiceListeningPanel>
           ),
           ElevatedButton(
             onPressed: () async {
-              Navigator.of(context).pop(); // Close dialog
-              Navigator.of(context).pop(); // Close bottom sheet
-              // Small delay to ensure navigation completes
-              await Future.delayed(const Duration(milliseconds: 100));
-              if (mounted) {
-                widget.onTranscriptComplete(_currentTranscript);
+              Navigator.of(context).pop(); // Close confirmation dialog
+              Navigator.of(context).pop(); // Close voice listening panel
+
+              // Navigate to AI Analysis Screen using unified flow
+              final interpretation = ref
+                  .read(emergencyInterpretationProvider)
+                  .value;
+
+              if (interpretation != null && mounted) {
+                // Import AIAnalysisScreen at the top if not already imported
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => AIAnalysisScreen(
+                      interpretation: interpretation,
+                      userMessage: _currentTranscript,
+                    ),
+                  ),
+                );
               }
             },
             style: ElevatedButton.styleFrom(

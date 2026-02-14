@@ -1,22 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
-
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:app/features/discovery/data/worker_models.dart';
+import '../enums/service_category.dart';
 
 /// Get Gemini API key from environment variables
 String get kGeminiApiKey => dotenv.env['GEMINI_API_KEY'] ?? '';
 
 enum EmergencyUrgency { low, medium, high, critical }
-
-enum ServiceCategory {
-  mechanic,
-  plumber,
-  electrician,
-  maid,
-  roadsideAssistance, // New category
-  other,
-}
 
 class EmergencyInterpretation {
   final String issueSummary;
@@ -217,13 +209,151 @@ class GeminiService {
             [],
         needsClarification: map['needs_clarification'] == true,
       );
-    } on TimeoutException {
-      // Surface a clear, fast-failing error so the UI can show feedback
-      throw Exception('AI response took too long. Please try again.');
+    } catch (e) {
+      print('AI Interpretation failed: $e. Using offline fallback.');
+      return _getFallbackInterpretation(transcript, lat, lng);
     }
   }
 
+  EmergencyInterpretation _getFallbackInterpretation(
+    String transcript,
+    double? lat,
+    double? lng,
+  ) {
+    final t = transcript.toLowerCase();
+    ServiceCategory category = ServiceCategory.other;
+
+    if (t.contains('mechanic') ||
+        t.contains('car') ||
+        t.contains('breakdown') ||
+        t.contains('tire') ||
+        t.contains('battery')) {
+      category = ServiceCategory.mechanic;
+    } else if (t.contains('plumber') ||
+        t.contains('leak') ||
+        t.contains('water') ||
+        t.contains('pipe') ||
+        t.contains('clog')) {
+      category = ServiceCategory.plumber;
+    } else if (t.contains('electric') ||
+        t.contains('power') ||
+        t.contains('light') ||
+        t.contains('fuse') ||
+        t.contains('shock')) {
+      category = ServiceCategory.electrician;
+    } else if (t.contains('maid') ||
+        t.contains('clean') ||
+        t.contains('dust') ||
+        t.contains('sweep') ||
+        t.contains('mop')) {
+      category = ServiceCategory.maid;
+    } else if (t.contains('roadside') ||
+        t.contains('tow') ||
+        t.contains('accident') ||
+        t.contains('stuck')) {
+      category = ServiceCategory.roadsideAssistance;
+    }
+
+    return EmergencyInterpretation(
+      issueSummary: transcript.length > 50
+          ? '${transcript.substring(0, 47)}...'
+          : transcript,
+      urgency:
+          t.contains('urgent') ||
+              t.contains('emergency') ||
+              t.contains('fire') ||
+              t.contains('danger')
+          ? EmergencyUrgency.high
+          : EmergencyUrgency.medium,
+      locationHint: lat != null && lng != null ? '$lat, $lng' : 'Unknown',
+      serviceCategory: category,
+      reason: 'Offline fallback interpretation based on keywords.',
+      confidence: 0.5,
+      riskFactors: [],
+      needsClarification: false,
+    );
+  }
+
+  Future<List<WorkerRanking>> rankWorkers({
+    required EmergencyInterpretation interpretation,
+    required List<Map<String, dynamic>> workersJson,
+    double? userLat,
+    double? userLng,
+  }) async {
+    final prompt = StringBuffer()
+      ..writeln(
+        'You are an AI-powered worker matching and ranking engine for a hyperlocal service platform.',
+      )
+      ..writeln(
+        'Your task is to intelligently rank available workers for a given service request.',
+      )
+      ..writeln(
+        'You must evaluate workers using contextual reasoning, not simple sorting or keyword matching.',
+      )
+      ..writeln('Service Request Context:')
+      ..writeln('- Type: ${interpretation.serviceCategory.name}')
+      ..writeln('- Urgency: ${interpretation.urgency.name}')
+      ..writeln('- Issue: ${interpretation.issueSummary}')
+      ..writeln('- User Location: $userLat, $userLng')
+      ..writeln('Available Workers:')
+      ..writeln(jsonEncode(workersJson))
+      ..writeln('Respond strictly in JSON:')
+      ..writeln('{')
+      ..writeln('  "ranking_strategy_summary": "",')
+      ..writeln('  "recommended_worker_id": "",')
+      ..writeln('  "ranked_workers": [')
+      ..writeln('    {')
+      ..writeln('      "worker_id": "",')
+      ..writeln('      "ranking_score": 0,')
+      ..writeln(
+        '      "recommendation_level": "PRIMARY | SECONDARY | STANDARD",',
+      )
+      ..writeln('      "highlight_marker": true,')
+      ..writeln('      "badge_label": "",')
+      ..writeln('      "reason": ""')
+      ..writeln('    }')
+      ..writeln('  ]')
+      ..writeln('}')
+      ..writeln('Rules:')
+      ..writeln('- Only ONE worker should have highlight_marker = true.')
+      ..writeln('- That worker must be the highest ranked.')
+      ..writeln(
+        '- recommendation_level: PRIMARY = top, SECONDARY = strong alternative, STANDARD = normal.',
+      )
+      ..writeln('- Do not output text outside JSON.');
+
+    try {
+      final response = await _model
+          .generateContent([Content.text(prompt.toString())])
+          .timeout(const Duration(seconds: 15));
+
+      final text = response.text ?? '{}';
+      final map = _safeDecodeJson(text);
+      final list = (map['ranked_workers'] as List<dynamic>?) ?? [];
+
+      return list
+          .map(
+            (e) => WorkerRanking(
+              workerId: e['worker_id'].toString(),
+              score: (e['ranking_score'] as num).toInt(),
+              reason: e['reason'].toString(),
+              recommendationLevel:
+                  e['recommendation_level']?.toString() ?? 'STANDARD',
+              highlightMarker: e['highlight_marker'] == true,
+              badgeLabel: e['badge_label']?.toString(),
+            ),
+          )
+          .toList();
+    } catch (e) {
+      print('Ranking error: $e');
+      rethrow;
+    }
+  }
+
+  // ... rest of the file ... (ensure interpretSearch remains intact)
+
   Future<SearchFilters> interpretSearch(String query) async {
+    // ... interpretSearch implementation ...
     final prompt = StringBuffer()
       ..writeln(
         'You help map natural language to filters for an Indian local worker app.',
@@ -284,6 +414,46 @@ class GeminiService {
       // Fall back quickly to current/default filters if AI is slow
       return const SearchFilters();
     }
+  }
+}
+
+class WorkerRanking {
+  final String workerId;
+  final int score;
+  final String reason;
+  final String recommendationLevel;
+  final bool highlightMarker;
+  final String? badgeLabel;
+  final Worker? worker;
+
+  WorkerRanking({
+    required this.workerId,
+    required this.score,
+    required this.reason,
+    this.recommendationLevel = 'STANDARD',
+    this.highlightMarker = false,
+    this.badgeLabel,
+    this.worker,
+  });
+
+  WorkerRanking copyWith({
+    String? workerId,
+    int? score,
+    String? reason,
+    String? recommendationLevel,
+    bool? highlightMarker,
+    String? badgeLabel,
+    Worker? worker,
+  }) {
+    return WorkerRanking(
+      workerId: workerId ?? this.workerId,
+      score: score ?? this.score,
+      reason: reason ?? this.reason,
+      recommendationLevel: recommendationLevel ?? this.recommendationLevel,
+      highlightMarker: highlightMarker ?? this.highlightMarker,
+      badgeLabel: badgeLabel ?? this.badgeLabel,
+      worker: worker ?? this.worker,
+    );
   }
 }
 
