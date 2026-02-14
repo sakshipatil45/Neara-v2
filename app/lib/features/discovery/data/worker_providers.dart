@@ -7,6 +7,32 @@ import 'worker_models.dart';
 final workersProvider = Provider<List<Worker>>((ref) {
   return [
     Worker(
+      id: 'W_GAS_1',
+      name: 'Gopal Gas Tech',
+      primaryCategory: ServiceCategory.gasService,
+      skills: const ['Gas leak detection', 'LPG repair', 'Pipe safety'],
+      rating: 4.9,
+      jobCount: 312,
+      verified: true,
+      latitude: 16.7050,
+      longitude: 74.2430,
+      status: WorkerStatus.available,
+      responseTimeMinutes: 3,
+    ),
+    Worker(
+      id: 'W_GAS_2',
+      name: 'Suresh LPG Expert',
+      primaryCategory: ServiceCategory.gasService,
+      skills: const ['LPG stove repair', 'Gas connection', 'Safety audit'],
+      rating: 4.7,
+      jobCount: 185,
+      verified: true,
+      latitude: 16.7150,
+      longitude: 74.2530,
+      status: WorkerStatus.available,
+      responseTimeMinutes: 7,
+    ),
+    Worker(
       id: 'W1',
       name: 'Anita Desai',
       primaryCategory: ServiceCategory.maid,

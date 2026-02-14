@@ -4,5 +4,6 @@ enum ServiceCategory {
   electrician,
   maid,
   roadsideAssistance,
+  gasService,
   other,
 }

@@ -73,6 +73,7 @@ class _WorkerDiscoveryScreenState extends ConsumerState<WorkerDiscoveryScreen> {
       ServiceCategory.mechanic => BitmapDescriptor.hueRed,
       ServiceCategory.maid => BitmapDescriptor.hueMagenta,
       ServiceCategory.roadsideAssistance => BitmapDescriptor.hueRose,
+      ServiceCategory.gasService => BitmapDescriptor.hueCyan,
       ServiceCategory.other => BitmapDescriptor.hueOrange,
     };
   }
@@ -1262,6 +1263,7 @@ class _WorkerCardHorizontal extends StatelessWidget {
       ServiceCategory.mechanic => Icons.build,
       ServiceCategory.maid => Icons.cleaning_services,
       ServiceCategory.roadsideAssistance => Icons.car_repair,
+      ServiceCategory.gasService => Icons.gas_meter,
       ServiceCategory.other => Icons.handyman,
     };
   }

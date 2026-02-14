@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:http/http.dart' as http;
 import 'package:app/features/discovery/data/worker_models.dart';
 import '../enums/service_category.dart';
 
-/// Get Gemini API key from environment variables
-String get kGeminiApiKey => dotenv.env['GEMINI_API_KEY'] ?? '';
+/// Get OpenRouter API key from environment variables
+String get kOpenRouterApiKey => dotenv.env['OPENROUTER_API_KEY'] ?? '';
 
 enum EmergencyUrgency { low, medium, high, critical }
 
@@ -69,24 +69,86 @@ class SearchFilters {
 }
 
 class GeminiService {
-  GeminiService()
-    // Use gemini-2.5-flash which is the latest fast model
-    : _model = GenerativeModel(
-        model: 'gemini-2.5-flash',
-        apiKey: kGeminiApiKey,
-      );
+  // OpenRouter API configuration
+  static const String _baseUrl =
+      'https://openrouter.ai/api/v1/chat/completions';
+  static const String _primaryModel = 'openai/gpt-4o-mini';
+  static const String _fallbackModel = 'mistralai/mistral-7b-instruct';
+  static const Duration _timeout = Duration(seconds: 10);
 
-  final GenerativeModel _model;
+  final http.Client _httpClient;
 
-  /// Lists all available models for debugging
-  Future<void> listAvailableModels() async {
+  GeminiService({http.Client? httpClient})
+    : _httpClient = httpClient ?? http.Client();
+
+  /// Helper method to make OpenRouter API calls
+  Future<String> _callOpenRouter({
+    required String systemPrompt,
+    required String userMessage,
+    String? model,
+    int retryCount = 0,
+  }) async {
+    final selectedModel = model ?? _primaryModel;
+
     try {
-      final response = await _model.generateContent([
-        Content.text('List available models'),
-      ]);
-      print('Available models check: ${response.text}');
+      print('🔍 Calling OpenRouter with model: $selectedModel');
+
+      final response = await _httpClient
+          .post(
+            Uri.parse(_baseUrl),
+            headers: {
+              'Authorization': 'Bearer $kOpenRouterApiKey',
+              'Content-Type': 'application/json',
+              'HTTP-Referer': 'https://neara.app',
+              'X-Title': 'Neara',
+            },
+            body: jsonEncode({
+              'model': selectedModel,
+              'messages': [
+                {'role': 'system', 'content': systemPrompt},
+                {'role': 'user', 'content': userMessage},
+              ],
+              'temperature': 0.3,
+            }),
+          )
+          .timeout(_timeout);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final content = data['choices'][0]['message']['content'] as String;
+        print('✅ OpenRouter response received');
+        return content;
+      } else {
+        throw Exception(
+          'OpenRouter API error: ${response.statusCode} - ${response.body}',
+        );
+      }
+    } on TimeoutException {
+      print('⏱️ Request timeout');
+      throw Exception('Request timeout after ${_timeout.inSeconds}s');
     } catch (e) {
-      print('Error checking models: $e');
+      print('❌ OpenRouter error: $e');
+
+      // Retry logic with fallback model
+      if (retryCount == 0 && selectedModel == _primaryModel) {
+        print('🔄 Retrying with same model...');
+        return _callOpenRouter(
+          systemPrompt: systemPrompt,
+          userMessage: userMessage,
+          model: selectedModel,
+          retryCount: 1,
+        );
+      } else if (retryCount == 1 && selectedModel == _primaryModel) {
+        print('🔄 Switching to fallback model: $_fallbackModel');
+        return _callOpenRouter(
+          systemPrompt: systemPrompt,
+          userMessage: userMessage,
+          model: _fallbackModel,
+          retryCount: 2,
+        );
+      }
+
+      rethrow;
     }
   }
 
@@ -95,81 +157,87 @@ class GeminiService {
     double? lat,
     double? lng,
   }) async {
-    final prompt = StringBuffer()
-      ..writeln(
-        'You are an advanced AI risk assessment assistant for a home services and roadside assistance platform.',
-      )
-      ..writeln('Your job is to analyze user service requests and determine:')
-      ..writeln('1. Service type')
-      ..writeln('2. Urgency level')
-      ..writeln('3. Risk factors involved')
-      ..writeln('4. A confidence score')
-      ..writeln('5. Whether clarification is required')
-      ..writeln('You must use contextual reasoning, not keyword matching.')
-      ..writeln('User speech transcript: "$transcript"')
-      ..writeln(
-        lat != null && lng != null
-            ? 'User GPS coordinates (lat,lng): $lat,$lng. Use these only to refine the locationHint (e.g., nearby area name) and to assess safety ONLY IF the user is stranded or in danger.'
-            : 'No GPS coordinates available for this request.',
-      )
-      ..writeln('While analyzing, consider:')
-      ..writeln('A. Environmental Context')
-      ..writeln('- Time of day (night increases risk)')
-      ..writeln(
-        '- Location type (highway, rural, isolated areas increase risk)',
-      )
-      ..writeln('- Weather conditions if mentioned')
-      ..writeln('- Traffic exposure')
-      ..writeln('B. Vulnerability Context')
-      ..writeln('- User alone')
-      ..writeln('- Children or elderly present')
-      ..writeln('- Medical condition mentioned')
-      ..writeln('C. Hazard Context')
-      ..writeln('- Fire risk')
-      ..writeln('- Gas leakage')
-      ..writeln('- Electrical short circuit')
-      ..writeln('- Structural damage')
-      ..writeln('- Vehicle immobility in unsafe location')
-      ..writeln('D. Severity Context')
-      ..writeln('- Immediate threat vs inconvenience')
-      ..writeln('- Potential for escalation')
-      ..writeln('Urgency must be classified as:')
-      ..writeln('CRITICAL:')
-      ..writeln('Immediate threat to life or major safety hazard.')
-      ..writeln('HIGH:')
-      ..writeln(
-        'Serious issue with possible safety consequences but not immediately life-threatening.',
-      )
-      ..writeln('MEDIUM:')
-      ..writeln('Repair needed soon but no safety danger.')
-      ..writeln('LOW:')
-      ..writeln('Routine or non-urgent request.')
-      ..writeln(
-        'If context is insufficient or ambiguous, reduce confidence score.',
-      )
-      ..writeln('If uncertainty is high, set "needs_clarification" to true.')
-      ..writeln('Respond strictly in JSON:')
-      ..writeln('{')
-      ..writeln(
-        '  "service_type": "Mechanic | Plumber | Electrician | Maid | Roadside Assistance | Other",',
-      )
-      ..writeln('  "urgency_level": "CRITICAL | HIGH | MEDIUM | LOW",')
-      ..writeln('  "issue_summary": "Short 3-5 word title",')
-      ..writeln('  "risk_factors": ["risk1", "risk2"],')
-      ..writeln('  "reason": "One sentence explanation",')
-      ..writeln('  "confidence": 0.0,')
-      ..writeln('  "needs_clarification": false')
-      ..writeln('}')
-      ..writeln('Rules:')
-      ..writeln('- Confidence must be between 0.0 and 1.0.')
-      ..writeln('- Confidence below 0.6 means ambiguity.')
-      ..writeln('- Do not output anything outside JSON.');
-
     try {
-      final response = await _model
-          .generateContent([Content.text(prompt.toString())])
-          .timeout(const Duration(seconds: 10));
-      final text = response.text ?? '{}';
+      // Build system prompt
+      final systemPrompt = StringBuffer()
+        ..writeln(
+          'You are an advanced AI risk assessment assistant for a home services and roadside assistance platform.',
+        )
+        ..writeln('Your job is to analyze user service requests and determine:')
+        ..writeln('1. Service type')
+        ..writeln('2. Urgency level')
+        ..writeln('3. Risk factors involved')
+        ..writeln('4. A confidence score')
+        ..writeln('5. Whether clarification is required')
+        ..writeln('You must use contextual reasoning, not keyword matching.')
+        ..writeln('While analyzing, consider:')
+        ..writeln('A. Environmental Context')
+        ..writeln('- Time of day (night increases risk)')
+        ..writeln(
+          '- Location type (highway, rural, isolated areas increase risk)',
+        )
+        ..writeln('- Weather conditions if mentioned')
+        ..writeln('- Traffic exposure')
+        ..writeln('B. Vulnerability Context')
+        ..writeln('- User alone')
+        ..writeln('- Children or elderly present')
+        ..writeln('- Medical condition mentioned')
+        ..writeln('C. Hazard Context')
+        ..writeln('- Fire risk')
+        ..writeln('- Gas leakage')
+        ..writeln('- Electrical short circuit')
+        ..writeln('- Structural damage')
+        ..writeln('- Vehicle immobility in unsafe location')
+        ..writeln('D. Severity Context')
+        ..writeln('- Immediate threat vs inconvenience')
+        ..writeln('- Potential for escalation')
+        ..writeln('Urgency must be classified as:')
+        ..writeln('CRITICAL:')
+        ..writeln('Immediate threat to life or major safety hazard.')
+        ..writeln('HIGH:')
+        ..writeln(
+          'Serious issue with possible safety consequences but not immediately life-threatening.',
+        )
+        ..writeln('MEDIUM:')
+        ..writeln('Repair needed soon but no safety danger.')
+        ..writeln('LOW:')
+        ..writeln('Routine or non-urgent request.')
+        ..writeln(
+          'If context is insufficient or ambiguous, reduce confidence score.',
+        )
+        ..writeln('If uncertainty is high, set "needs_clarification" to true.')
+        ..writeln('Respond strictly in JSON:')
+        ..writeln('{')
+        ..writeln(
+          'Note: Use "Gas Service" for gas leaks, LPG issues, gas line problems, or gas appliance emergencies.',
+        )
+        ..writeln('  "urgency_level": "CRITICAL | HIGH | MEDIUM | LOW",')
+        ..writeln('  "issue_summary": "Short 3-5 word title",')
+        ..writeln('  "risk_factors": ["risk1", "risk2"],')
+        ..writeln('  "reason": "One sentence explanation",')
+        ..writeln('  "confidence": 0.0,')
+        ..writeln('  "needs_clarification": false')
+        ..writeln('}')
+        ..writeln('Rules:')
+        ..writeln('- Confidence must be between 0.0 and 1.0.')
+        ..writeln('- Confidence below 0.6 means ambiguity.')
+        ..writeln('- Do not output anything outside JSON.');
+
+      // Build user message
+      final userMessage = StringBuffer()
+        ..writeln('User speech transcript: "$transcript"')
+        ..writeln(
+          lat != null && lng != null
+              ? 'User GPS coordinates (lat,lng): $lat,$lng. Use these only to refine the locationHint (e.g., nearby area name) and to assess safety ONLY IF the user is stranded or in danger.'
+              : 'No GPS coordinates available for this request.',
+        );
+
+      // Call OpenRouter
+      final text = await _callOpenRouter(
+        systemPrompt: systemPrompt.toString(),
+        userMessage: userMessage.toString(),
+      );
+
       final map = _safeDecodeJson(text);
 
       final urgency = switch (map['urgency_level']?.toString().toUpperCase()) {
@@ -188,6 +256,8 @@ class GeminiService {
         'maid' => ServiceCategory.maid,
         'roadside assistance' => ServiceCategory.roadsideAssistance,
         'roadsideassistance' => ServiceCategory.roadsideAssistance,
+        'gas service' => ServiceCategory.gasService,
+        'gasservice' => ServiceCategory.gasService,
         _ => ServiceCategory.other,
       };
 
@@ -323,11 +393,19 @@ class GeminiService {
       ..writeln('- Do not output text outside JSON.');
 
     try {
-      final response = await _model
-          .generateContent([Content.text(prompt.toString())])
-          .timeout(const Duration(seconds: 15));
+      // Build system prompt for worker ranking
+      final systemPrompt = prompt.toString();
 
-      final text = response.text ?? '{}';
+      // Build user message (empty for this use case, all context in system)
+      final userMessage =
+          'Please rank these workers based on the criteria provided.';
+
+      // Call OpenRouter
+      final text = await _callOpenRouter(
+        systemPrompt: systemPrompt,
+        userMessage: userMessage,
+      );
+
       final map = _safeDecodeJson(text);
       final list = (map['ranked_workers'] as List<dynamic>?) ?? [];
 
@@ -369,10 +447,18 @@ class GeminiService {
       ..writeln(' "genderPreference": "any"|"female"|"male" }');
 
     try {
-      final response = await _model
-          .generateContent([Content.text(prompt.toString())])
-          .timeout(const Duration(seconds: 8));
-      final text = response.text ?? '{}';
+      // Build system prompt for search interpretation
+      final systemPrompt = prompt.toString();
+
+      // Build user message
+      final userMessage = 'User query: "$query"';
+
+      // Call OpenRouter
+      final text = await _callOpenRouter(
+        systemPrompt: systemPrompt,
+        userMessage: userMessage,
+      );
+
       final map = _safeDecodeJson(text);
 
       ServiceCategory? service;
