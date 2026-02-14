@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+        <!-- Google Maps API key (keep this secret in real apps). -->
+        <string name="google_maps_key">AIzaSyCTVc2wgGHZiFTDDiYHMgFxFqr0NPHPC_A</string>
+</resources>
