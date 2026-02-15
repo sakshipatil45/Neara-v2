@@ -4,10 +4,12 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import '../../../core/ai/ai_providers.dart';
 import '../../../core/ai/gemini_service.dart';
+import '../../../core/controllers/request_controller.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/emergency/emergency_providers.dart';
 import '../../emergency/sos_confirmation_screen.dart';
 import '../../discovery/presentation/worker_discovery_screen.dart';
+import '../../analysis/presentation/ai_analysis_screen.dart';
 
 class VoiceAgentScreen extends ConsumerStatefulWidget {
   final VoidCallback? onOpenDrawer;
@@ -105,6 +107,13 @@ class _VoiceAgentScreenState extends ConsumerState<VoiceAgentScreen> {
           content: Text('Unable to process request. Please try again.'),
         ),
       );
+    // Use unified request controller for consistent flow
+    try {
+      final controller = createRequestController(ref, context);
+      await controller.handleUserRequest(input);
+    } catch (e) {
+      // Error already handled by controller
+      print('Voice input processing error: $e');
     }
   }
 
@@ -853,12 +862,24 @@ class _VoiceListeningPanelState extends ConsumerState<_VoiceListeningPanel>
           ),
           ElevatedButton(
             onPressed: () async {
-              Navigator.of(context).pop(); // Close dialog
-              Navigator.of(context).pop(); // Close bottom sheet
-              // Small delay to ensure navigation completes
-              await Future.delayed(const Duration(milliseconds: 100));
-              if (mounted) {
-                widget.onTranscriptComplete(_currentTranscript);
+              Navigator.of(context).pop(); // Close confirmation dialog
+              Navigator.of(context).pop(); // Close voice listening panel
+
+              // Navigate to AI Analysis Screen using unified flow
+              final interpretation = ref
+                  .read(emergencyInterpretationProvider)
+                  .value;
+
+              if (interpretation != null && mounted) {
+                // Import AIAnalysisScreen at the top if not already imported
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => AIAnalysisScreen(
+                      interpretation: interpretation,
+                      userMessage: _currentTranscript,
+                    ),
+                  ),
+                );
               }
             },
             style: ElevatedButton.styleFrom(

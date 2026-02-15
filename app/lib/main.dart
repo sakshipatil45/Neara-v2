@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/theme/app_theme.dart';
 import 'features/voice_agent/presentation/voice_agent_screen.dart';
 import 'features/discovery/presentation/worker_discovery_screen.dart';
+import 'features/multilingual/presentation/multilingual_demo_screen.dart';
 import 'shared/widgets/app_drawer.dart';
 
 Future<void> main() async {
@@ -36,6 +37,7 @@ class _RootShell extends StatefulWidget {
 class _RootShellState extends State<_RootShell> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   int _index = 0; // 0: Voice Agent, 1: Worker Discovery
+  int _index = 0; // 0: Voice Agent, 1: Worker Discovery, 2: Multilingual Demo
 
   @override
   Widget build(BuildContext context) {
@@ -50,6 +52,7 @@ class _RootShellState extends State<_RootShell> {
               onOpenDrawer: () => _scaffoldKey.currentState?.openDrawer(),
             ),
             const WorkerDiscoveryScreen(),
+            const MultilingualDemoScreen(),
           ],
         ),
       ),

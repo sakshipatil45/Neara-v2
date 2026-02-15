@@ -41,6 +41,14 @@ class AppDrawer extends ConsumerWidget {
                 onSelectScreen?.call(1);
               },
             ),
+            _DrawerItem(
+              icon: Icons.language_rounded,
+              label: 'Multilingual AI Demo',
+              onTap: () {
+                Navigator.of(context).maybePop();
+                onSelectScreen?.call(2);
+              },
+            ),
             const _DrawerItem(
               icon: Icons.bookmark_rounded,
               label: 'Saved Workers',

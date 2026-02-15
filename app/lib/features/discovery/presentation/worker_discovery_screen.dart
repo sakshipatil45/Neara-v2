@@ -4,14 +4,19 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../data/worker_providers.dart';
 import '../data/worker_models.dart';
+
 import '../../../core/ai/ai_providers.dart';
 import '../../../core/ai/gemini_service.dart';
+import '../../../core/controllers/request_controller.dart';
+import '../../../core/enums/service_category.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/emergency/emergency_providers.dart';
 import '../../emergency/sos_confirmation_screen.dart';
 
 class WorkerDiscoveryScreen extends ConsumerStatefulWidget {
-  const WorkerDiscoveryScreen({super.key});
+  final List<WorkerRanking>? recommendations;
+
+  const WorkerDiscoveryScreen({super.key, this.recommendations});
 
   @override
   ConsumerState<WorkerDiscoveryScreen> createState() =>
@@ -33,15 +38,26 @@ class _WorkerDiscoveryScreenState extends ConsumerState<WorkerDiscoveryScreen> {
 
   Set<Marker> _buildMarkers(List<Worker> workers) {
     return workers.map((worker) {
+      // Check if this worker has a highlighed ranking
+      final ranking = widget.recommendations?.firstWhere(
+        (r) => r.workerId == worker.id,
+        orElse: () =>
+            WorkerRanking(workerId: '', score: 0, reason: '', worker: worker),
+      );
+      final isHighlighted = ranking?.highlightMarker ?? false;
+
       final hue = _getCategoryHue(worker.primaryCategory);
       return Marker(
         markerId: MarkerId(worker.id),
         position: LatLng(worker.latitude, worker.longitude),
         icon: BitmapDescriptor.defaultMarkerWithHue(hue),
+        // Simple highlight by increasing z-index or changing icon could be done here if custom icons were used.
+        // For now, we rely on the list to show the recommendation details.
+        zIndex: isHighlighted ? 10 : 1.0,
         infoWindow: InfoWindow(
           title: worker.name,
           snippet:
-              '${worker.primaryCategory.name} • ⭐ ${worker.rating.toStringAsFixed(1)}',
+              '${worker.primaryCategory.name} • ⭐ ${worker.rating.toStringAsFixed(1)}${isHighlighted ? " (Recommended)" : ""}',
         ),
         onTap: () {
           _showWorkerDetails(worker);
@@ -57,6 +73,7 @@ class _WorkerDiscoveryScreenState extends ConsumerState<WorkerDiscoveryScreen> {
       ServiceCategory.mechanic => BitmapDescriptor.hueRed,
       ServiceCategory.maid => BitmapDescriptor.hueMagenta,
       ServiceCategory.roadsideAssistance => BitmapDescriptor.hueRose,
+      ServiceCategory.gasService => BitmapDescriptor.hueCyan,
       ServiceCategory.other => BitmapDescriptor.hueOrange,
     };
   }
@@ -82,13 +99,23 @@ class _WorkerDiscoveryScreenState extends ConsumerState<WorkerDiscoveryScreen> {
       );
     }
 
-    final workers = ref.watch(filteredWorkersProvider);
+    // If recommendations exist, use them. Otherwise use provider.
+    final List<Worker> workers;
+    if (widget.recommendations != null && widget.recommendations!.isNotEmpty) {
+      workers = widget.recommendations!
+          .where((r) => r.worker != null)
+          .map((r) => r.worker!)
+          .toList();
+    } else {
+      workers = ref.watch(filteredWorkersProvider) ?? [];
+    }
+
     final markers = _buildMarkers(workers);
 
     return Scaffold(
       body: Stack(
         children: [
-          // Full screen map
+          // ... GoogleMap ...
           GoogleMap(
             initialCameraPosition: const CameraPosition(
               target: LatLng(16.7049, 74.2433),
@@ -101,7 +128,7 @@ class _WorkerDiscoveryScreenState extends ConsumerState<WorkerDiscoveryScreen> {
             markers: markers,
           ),
 
-          // Floating UI elements
+          // ... Floating UI elements ...
           SafeArea(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -111,8 +138,10 @@ class _WorkerDiscoveryScreenState extends ConsumerState<WorkerDiscoveryScreen> {
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
                   child: _FloatingSearchBar(
                     controller: _searchController,
-                    onSubmitted: (query) {
-                      ref.read(searchFiltersProvider.notifier).fromQuery(query);
+                    onSubmitted: (query) async {
+                      // Use unified request controller for consistent flow
+                      final controller = createRequestController(ref, context);
+                      await controller.handleUserRequest(query);
                     },
                     onFilterTap: () {
                       setState(() {
@@ -207,7 +236,7 @@ class _WorkerDiscoveryScreenState extends ConsumerState<WorkerDiscoveryScreen> {
             ),
           ),
 
-          // Bottom worker list preview (over map, still allows map interaction above it)
+          // Bottom worker list preview
           Positioned(
             left: 0,
             right: 0,
@@ -215,8 +244,14 @@ class _WorkerDiscoveryScreenState extends ConsumerState<WorkerDiscoveryScreen> {
             child: SafeArea(
               top: false,
               child: SizedBox(
-                height: 220,
+                height: 330, // Increased height for enhanced cards with badges
                 child: _BottomWorkerList(
+                  title: widget.recommendations != null
+                      ? 'Recommended for You'
+                      : 'Workers Nearby',
+                  isRecommendation: widget.recommendations != null,
+                  workers: workers,
+                  rankings: widget.recommendations, // Pass rankings
                   onViewAll: () {
                     setState(() {
                       _showListView = true;
@@ -337,9 +372,10 @@ class _WorkerDiscoveryScreenState extends ConsumerState<WorkerDiscoveryScreen> {
           ),
 
           // My location button
+          // ... My location button ...
           Positioned(
             right: 16,
-            bottom: 200,
+            bottom: 220,
             child: _GlassButton(
               icon: Icons.my_location,
               onTap: () {
@@ -1346,173 +1382,456 @@ class _GlassButton extends StatelessWidget {
   }
 }
 
-class _BottomWorkerList extends ConsumerWidget {
+class _BottomWorkerList extends StatelessWidget {
+  final String title;
+  final bool isRecommendation;
+  final List<Worker> workers;
+  final List<WorkerRanking>? rankings;
   final VoidCallback onViewAll;
 
-  const _BottomWorkerList({required this.onViewAll});
+  const _BottomWorkerList({
+    required this.title,
+    required this.isRecommendation,
+    required this.workers,
+    this.rankings,
+    required this.onViewAll,
+  });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final workers = ref.watch(filteredWorkersProvider);
+  Widget build(BuildContext context) {
+    if (workers.isEmpty) {
+      return Center(
+        child: Container(
+          margin: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: const Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.person_off_rounded,
+                size: 48,
+                color: Color(0xFF94A3B8),
+              ),
+              SizedBox(height: 12),
+              Text(
+                'No workers found nearby',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1E293B),
+                ),
+              ),
+              SizedBox(height: 4),
+              Text(
+                'Try adjusting filters or searching for a different service.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 14, color: Color(0xFF64748B)),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 20,
-            offset: const Offset(0, -4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    '${workers.length} workers nearby',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF1E293B),
-                    ),
-                    overflow: TextOverflow.ellipsis,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF1E293B),
+                ),
+              ),
+              GestureDetector(
+                onTap: onViewAll,
+                child: const Text(
+                  'View All',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF6366F1),
                   ),
                 ),
-                const SizedBox(width: 16),
-                GestureDetector(
-                  onTap: onViewAll,
-                  child: const Text(
-                    'View all',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Color(0xFF6366F1),
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            scrollDirection: Axis.horizontal,
+            itemCount: workers.length,
+            itemBuilder: (context, index) {
+              final worker = workers[index];
+              // Find ranking for this worker if available
+              final ranking = rankings?.firstWhere(
+                (r) => r.workerId == worker.id,
+                orElse: () => WorkerRanking(
+                  workerId: worker.id,
+                  score: 0,
+                  reason: '',
+                  worker: worker,
                 ),
-              ],
-            ),
+              );
+
+              return _WorkerCardHorizontal(
+                worker: worker,
+                ranking: ranking,
+                isRecommended: isRecommendation,
+              );
+            },
           ),
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: workers.length > 5 ? 5 : workers.length,
-              itemBuilder: (context, index) {
-                return _WorkerCardHorizontal(worker: workers[index]);
-              },
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
 class _WorkerCardHorizontal extends StatelessWidget {
   final Worker worker;
+  final WorkerRanking? ranking;
+  final bool isRecommended;
 
-  const _WorkerCardHorizontal({required this.worker});
+  const _WorkerCardHorizontal({
+    required this.worker,
+    this.ranking,
+    required this.isRecommended,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isHighlighted =
+        ranking?.highlightMarker == true || (isRecommended && ranking != null);
+    final badgeLabel = ranking?.badgeLabel;
+    final isFastResponse = worker.responseTimeMinutes < 20;
+
+    return Container(
+      width: 300,
+      margin: const EdgeInsets.only(right: 16, bottom: 8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        gradient: isHighlighted
+            ? LinearGradient(
+                colors: [
+                  const Color(0xFF6366F1).withOpacity(0.1),
+                  const Color(0xFF8B5CF6).withOpacity(0.1),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              )
+            : null,
+        border: isHighlighted
+            ? Border.all(width: 2, color: const Color(0xFF6366F1))
+            : null,
+        boxShadow: [
+          BoxShadow(
+            color: isHighlighted
+                ? const Color(0xFF6366F1).withOpacity(0.2)
+                : Colors.black.withOpacity(0.08),
+            blurRadius: isHighlighted ? 20 : 12,
+            offset: const Offset(0, 4),
+            spreadRadius: isHighlighted ? 2 : 0,
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: BackdropFilter(
+          filter: isHighlighted
+              ? ImageFilter.blur(sigmaX: 10, sigmaY: 10)
+              : ImageFilter.blur(sigmaX: 0, sigmaY: 0),
+          child: Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: isHighlighted
+                  ? Colors.white.withOpacity(0.9)
+                  : Colors.white,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Top badges row
+                if (badgeLabel != null && badgeLabel.isNotEmpty)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF6366F1).withOpacity(0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.auto_awesome,
+                          size: 16,
+                          color: Colors.white,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          badgeLabel.toUpperCase(),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                // Worker info row
+                Row(
+                  children: [
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: AppGradients.accentGradient,
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF6366F1).withOpacity(0.3),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Center(
+                        child: Text(
+                          worker.name[0],
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 24,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            worker.name,
+                            style: const TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF1E293B),
+                              height: 1.2,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Icon(
+                                _getCategoryIcon(worker.primaryCategory),
+                                size: 14,
+                                color: const Color(0xFF6366F1),
+                              ),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  worker.primaryCategory.name.toUpperCase(),
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF6366F1),
+                                    letterSpacing: 0.5,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 14),
+
+                // Badges row
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    // Rating badge
+                    _Badge(
+                      icon: Icons.star_rounded,
+                      label: worker.rating.toStringAsFixed(1),
+                      color: const Color(0xFFFBBF24),
+                      backgroundColor: const Color(
+                        0xFFFBBF24,
+                      ).withOpacity(0.15),
+                    ),
+                    // Verified badge
+                    if (worker.verified)
+                      _Badge(
+                        icon: Icons.verified,
+                        label: 'VERIFIED',
+                        color: const Color(0xFF10B981),
+                        backgroundColor: const Color(
+                          0xFF10B981,
+                        ).withOpacity(0.15),
+                      ),
+                    // Fast response badge
+                    if (isFastResponse)
+                      _Badge(
+                        icon: Icons.bolt,
+                        label: '${worker.responseTimeMinutes}m',
+                        color: const Color(0xFFEF4444),
+                        backgroundColor: const Color(
+                          0xFFEF4444,
+                        ).withOpacity(0.15),
+                      ),
+                  ],
+                ),
+
+                const SizedBox(height: 12),
+
+                // Skills
+                Text(
+                  worker.skills.take(3).join(' • '),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.w500,
+                    height: 1.4,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+
+                const Spacer(),
+
+                // Action button
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      showModalBottomSheet(
+                        context: context,
+                        backgroundColor: Colors.transparent,
+                        isScrollControlled: true,
+                        builder: (context) =>
+                            _WorkerDetailSheet(worker: worker),
+                      );
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1E293B),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      padding: EdgeInsets.zero,
+                      elevation: 0,
+                      shadowColor: Colors.transparent,
+                    ),
+                    child: const Text(
+                      'View Profile',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  IconData _getCategoryIcon(ServiceCategory category) {
+    return switch (category) {
+      ServiceCategory.plumber => Icons.plumbing,
+      ServiceCategory.electrician => Icons.electrical_services,
+      ServiceCategory.mechanic => Icons.build,
+      ServiceCategory.maid => Icons.cleaning_services,
+      ServiceCategory.roadsideAssistance => Icons.car_repair,
+      ServiceCategory.gasService => Icons.gas_meter,
+      ServiceCategory.other => Icons.handyman,
+    };
+  }
+}
+
+// Helper widget for badges
+class _Badge extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final Color backgroundColor;
+
+  const _Badge({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.backgroundColor,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withOpacity(0.3), width: 1),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 20,
-                height: 20,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: AppGradients.accentGradient,
-                ),
-                child: Center(
-                  child: Text(
-                    worker.name[0],
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 10,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  worker.name,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF1E293B),
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              if (worker.verified)
-                Container(
-                  padding: const EdgeInsets.all(3),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF10B981).withOpacity(0.15),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.verified_rounded,
-                    size: 10,
-                    color: Color(0xFF10B981),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  worker.primaryCategory.name.toUpperCase(),
-                  style: const TextStyle(
-                    fontSize: 10,
-                    color: Color(0xFF6366F1),
-                    fontWeight: FontWeight.w700,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const SizedBox(width: 8),
-              const Icon(
-                Icons.star_rounded,
-                size: 12,
-                color: Color(0xFFFBBF24),
-              ),
-              const SizedBox(width: 3),
-              Text(
-                worker.rating.toStringAsFixed(1),
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: Color(0xFF1E293B),
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: color,
+              letterSpacing: 0.3,
+            ),
           ),
         ],
       ),

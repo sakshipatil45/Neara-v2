@@ -1,4 +1,4 @@
-import '../../../core/ai/gemini_service.dart';
+import '../../../core/enums/service_category.dart';
 
 enum WorkerStatus { available, busy, off }
 
@@ -26,6 +26,8 @@ class Worker {
   final WorkerStatus status;
   final double riskScore; // 0.0 to 1.0, where 0 is safest
 
+  final int responseTimeMinutes;
+
   Worker({
     required this.id,
     required this.name,
@@ -39,6 +41,6 @@ class Worker {
     required this.latitude,
     required this.longitude,
     this.status = WorkerStatus.available,
-    this.riskScore = 0.0,
+    this.responseTimeMinutes = 30,
   });
 }
