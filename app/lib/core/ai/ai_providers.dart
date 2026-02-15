@@ -107,6 +107,40 @@ class SearchFiltersController extends StateNotifier<SearchFilters> {
   void update(SearchFilters filters) => state = filters;
 }
 
+<<<<<<< HEAD
+=======
+final multilingualAssistantProvider =
+    StateNotifierProvider<
+      MultilingualController,
+      AsyncValue<MultilingualResponse?>
+    >((ref) => MultilingualController(ref));
+
+class MultilingualController
+    extends StateNotifier<AsyncValue<MultilingualResponse?>> {
+  MultilingualController(this._ref) : super(const AsyncValue.data(null));
+
+  final Ref _ref;
+
+  Future<void> processRequest(
+    String transcript, {
+    String selectedLanguage = 'auto',
+  }) async {
+    state = const AsyncValue.loading();
+    try {
+      final result = await _ref
+          .read(geminiServiceProvider)
+          .processUserRequest(
+            transcript: transcript,
+            selectedLanguage: selectedLanguage,
+          );
+      state = AsyncValue.data(result);
+    } catch (e, stack) {
+      state = AsyncValue.error(e, stack);
+    }
+  }
+}
+
+>>>>>>> 9bd3e140705023388089eef5a89e20d2fc885764
 final workerServiceProvider = Provider<WorkerService>(
   (ref) => WorkerService(ref),
 );
@@ -312,6 +346,7 @@ class WorkerService {
     return score.clamp(0.0, 100.0);
   }
 }
+<<<<<<< HEAD
 
 final multilingualAssistantProvider =
     StateNotifierProvider<
@@ -343,3 +378,5 @@ class MultilingualController
     }
   }
 }
+=======
+>>>>>>> 9bd3e140705023388089eef5a89e20d2fc885764
