@@ -6,6 +6,9 @@ import '../../../core/ai/ai_providers.dart';
 import '../../../core/ai/gemini_service.dart';
 import '../../../core/controllers/request_controller.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/emergency/emergency_providers.dart';
+import '../../emergency/sos_confirmation_screen.dart';
+import '../../discovery/presentation/worker_discovery_screen.dart';
 import '../../analysis/presentation/ai_analysis_screen.dart';
 
 class VoiceAgentScreen extends ConsumerStatefulWidget {
@@ -49,6 +52,61 @@ class _VoiceAgentScreenState extends ConsumerState<VoiceAgentScreen> {
   Future<void> _processVoiceInput(String input) async {
     if (input.isEmpty) return;
 
+    // Check if we already have an interpretation (from voice input)
+    var interpretation = ref.read(emergencyInterpretationProvider).value;
+
+    if (interpretation == null) {
+      // Show loading only if we need to interpret
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      try {
+        // Interpret the voice input with Gemini
+        await ref
+            .read(emergencyInterpretationProvider.notifier)
+            .interpret(input);
+
+        // Get the interpretation result
+        interpretation = ref.read(emergencyInterpretationProvider).value;
+
+        if (mounted) {
+          // Close loading dialog
+          Navigator.of(context).pop();
+        }
+      } catch (e) {
+        if (mounted) {
+          Navigator.of(context).pop();
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Error: ${e.toString()}')));
+        }
+        return;
+      }
+    }
+
+    // Navigate with the interpretation
+    if (mounted && interpretation != null) {
+      // Update search filters based on interpretation
+      final currentFilters = ref.read(searchFiltersProvider);
+      ref.read(searchFiltersProvider.notifier).update(
+            currentFilters.copyWith(
+              serviceCategory: interpretation.serviceCategory,
+            ),
+          );
+
+      // Navigate to worker discovery screen
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const WorkerDiscoveryScreen()));
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to process request. Please try again.'),
+        ),
+      );
     // Use unified request controller for consistent flow
     try {
       final controller = createRequestController(ref, context);
@@ -175,6 +233,35 @@ class _VoiceAgentScreenState extends ConsumerState<VoiceAgentScreen> {
             ],
           ),
         ),
+      ),
+      floatingActionButton: Consumer(
+        builder: (context, ref, child) {
+          final canAccessSOS = ref.watch(canAccessSOSProvider);
+          final hasMinimumContacts =
+              ref.watch(emergencyContactsProvider).length >= 3;
+
+          if (!canAccessSOS || !hasMinimumContacts) {
+            return const SizedBox.shrink();
+          }
+
+          return FloatingActionButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const SOSConfirmationScreen(),
+                ),
+              );
+            },
+            backgroundColor: const Color(0xFFDC2626),
+            elevation: 8,
+            child: const Icon(
+              Icons.emergency_rounded,
+              color: Colors.white,
+              size: 28,
+            ),
+          );
+        },
       ),
     );
   }
@@ -516,7 +603,7 @@ class _VoiceListeningPanelState extends ConsumerState<_VoiceListeningPanel>
       pauseFor: const Duration(seconds: 3),
       partialResults: true,
       onDevice: false,
-      listenMode: stt.ListenMode.confirmation,
+      listenMode: stt.ListenMode.dictation,
     );
   }
 
@@ -1022,7 +1109,7 @@ class _VoiceListeningPanelState extends ConsumerState<_VoiceListeningPanel>
                 borderRadius: BorderRadius.circular(26),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF6366F1).withOpacity(0.3),
+                    color: Color.fromRGBO(99, 102, 241, 0.3),
                     blurRadius: 12,
                     offset: const Offset(0, 4),
                   ),
