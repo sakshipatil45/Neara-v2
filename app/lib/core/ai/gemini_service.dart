@@ -47,6 +47,10 @@ class SearchFilters {
   final double minRating;
   final bool verifiedOnly;
   final String genderPreference; // any / female / male
+  final bool womenSafetyMode; // Enhanced safety features
+  final bool liveTracking; // Real-time session tracking
+  final bool riskMonitoring; // AI-based risk detection
+  final bool shareWithPrioritized; // Share location with prioritized contact
 
   const SearchFilters({
     this.serviceCategory,
@@ -55,6 +59,10 @@ class SearchFilters {
     this.minRating = 3.5,
     this.verifiedOnly = false,
     this.genderPreference = 'any',
+    this.womenSafetyMode = false,
+    this.liveTracking = false,
+    this.riskMonitoring = false,
+    this.shareWithPrioritized = false,
   });
 
   SearchFilters copyWith({
@@ -64,6 +72,10 @@ class SearchFilters {
     double? minRating,
     bool? verifiedOnly,
     String? genderPreference,
+    bool? womenSafetyMode,
+    bool? liveTracking,
+    bool? riskMonitoring,
+    bool? shareWithPrioritized,
   }) {
     return SearchFilters(
       serviceCategory: serviceCategory ?? this.serviceCategory,
@@ -72,17 +84,21 @@ class SearchFilters {
       minRating: minRating ?? this.minRating,
       verifiedOnly: verifiedOnly ?? this.verifiedOnly,
       genderPreference: genderPreference ?? this.genderPreference,
+      womenSafetyMode: womenSafetyMode ?? this.womenSafetyMode,
+      liveTracking: liveTracking ?? this.liveTracking,
+      riskMonitoring: riskMonitoring ?? this.riskMonitoring,
+      shareWithPrioritized: shareWithPrioritized ?? this.shareWithPrioritized,
     );
   }
 }
 
 class GeminiService {
   GeminiService()
-    // Use gemini-2.5-flash which is the latest fast model
-    : _model = GenerativeModel(
-        model: 'gemini-2.5-flash',
-        apiKey: kGeminiApiKey,
-      );
+      // Use gemini-2.5-flash which is the latest fast model
+      : _model = GenerativeModel(
+          model: 'gemini-2.5-flash',
+          apiKey: kGeminiApiKey,
+        );
 
   final GenerativeModel _model;
 
@@ -175,8 +191,8 @@ class GeminiService {
 
     try {
       final response = await _model
-          .generateContent([Content.text(prompt.toString())])
-          .timeout(const Duration(seconds: 10));
+          .generateContent([Content.text(prompt.toString())]).timeout(
+              const Duration(seconds: 10));
       final text = response.text ?? '{}';
       final map = _safeDecodeJson(text);
 
@@ -210,8 +226,7 @@ class GeminiService {
         confidence: (map['confidence'] is num)
             ? (map['confidence'] as num).toDouble()
             : 0.0,
-        riskFactors:
-            (map['risk_factors'] as List<dynamic>?)
+        riskFactors: (map['risk_factors'] as List<dynamic>?)
                 ?.map((e) => e.toString())
                 .toList() ??
             [],
@@ -240,8 +255,8 @@ class GeminiService {
 
     try {
       final response = await _model
-          .generateContent([Content.text(prompt.toString())])
-          .timeout(const Duration(seconds: 8));
+          .generateContent([Content.text(prompt.toString())]).timeout(
+              const Duration(seconds: 8));
       final text = response.text ?? '{}';
       final map = _safeDecodeJson(text);
 
@@ -269,15 +284,13 @@ class GeminiService {
 
       return SearchFilters(
         serviceCategory: service,
-        radiusKm: (map['radiusKm'] is num)
-            ? (map['radiusKm'] as num).toDouble()
-            : 5,
+        radiusKm:
+            (map['radiusKm'] is num) ? (map['radiusKm'] as num).toDouble() : 5,
         minRating: (map['minRating'] is num)
             ? (map['minRating'] as num).toDouble()
             : 4.0,
-        verifiedOnly: map['verifiedOnly'] is bool
-            ? map['verifiedOnly'] as bool
-            : true,
+        verifiedOnly:
+            map['verifiedOnly'] is bool ? map['verifiedOnly'] as bool : true,
         genderPreference: map['genderPreference']?.toString() ?? 'any',
       );
     } on TimeoutException {

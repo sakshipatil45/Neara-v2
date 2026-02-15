@@ -13,7 +13,6 @@ ThemeData buildAppTheme() {
   );
 
   final colorScheme = const ColorScheme.light(
-    background: primaryBackground,
     surface: secondaryBackground,
     primary: Colors.black,
     secondary: Colors.black,

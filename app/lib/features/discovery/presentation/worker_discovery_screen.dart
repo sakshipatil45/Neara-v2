@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -9,6 +7,8 @@ import '../data/worker_models.dart';
 import '../../../core/ai/ai_providers.dart';
 import '../../../core/ai/gemini_service.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/emergency/emergency_providers.dart';
+import '../../emergency/sos_confirmation_screen.dart';
 
 class WorkerDiscoveryScreen extends ConsumerStatefulWidget {
   const WorkerDiscoveryScreen({super.key});
@@ -122,6 +122,69 @@ class _WorkerDiscoveryScreenState extends ConsumerState<WorkerDiscoveryScreen> {
                   ),
                 ),
 
+                // Safety Mode Indicator Banner
+                Consumer(
+                  builder: (context, ref, child) {
+                    final safetyMode =
+                        ref.watch(searchFiltersProvider).womenSafetyMode;
+                    if (!safetyMode) return const SizedBox.shrink();
+
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFEF3C7),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: const Color(0xFFD97706),
+                            width: 2,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFD97706),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Icon(
+                                Icons.shield_rounded,
+                                color: Colors.white,
+                                size: 16,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            const Expanded(
+                              child: Text(
+                                'Safety Mode Active',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF92400E),
+                                ),
+                              ),
+                            ),
+                            const Text(
+                              'Verified Only',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF92400E),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 8),
+
                 // Collapsible filter panel
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 300),
@@ -161,6 +224,115 @@ class _WorkerDiscoveryScreenState extends ConsumerState<WorkerDiscoveryScreen> {
                   },
                 ),
               ),
+            ),
+          ),
+
+          // SOS Button - Easy Access
+          Positioned(
+            right: 16,
+            bottom: 260,
+            child: Consumer(
+              builder: (context, ref, child) {
+                final canAccessSOS = ref.watch(canAccessSOSProvider);
+                final hasMinimumContacts =
+                    ref.watch(emergencyContactsProvider).length >= 3;
+                final safetyMode =
+                    ref.watch(searchFiltersProvider).womenSafetyMode;
+
+                if (!canAccessSOS || !hasMinimumContacts) {
+                  return const SizedBox.shrink();
+                }
+
+                if (safetyMode) {
+                  return const _PulsingSOSButton();
+                }
+
+                return GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const SOSConfirmationScreen(),
+                      ),
+                    );
+                  },
+                  child: Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: const Color(0xFFDC2626),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFFDC2626).withOpacity(0.4),
+                          blurRadius: 16,
+                          spreadRadius: 2,
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.emergency_rounded,
+                      color: Colors.white,
+                      size: 28,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+
+          // Safety Status Overlays
+          Positioned(
+            top: 100,
+            left: 16,
+            child: Consumer(
+              builder: (context, ref, child) {
+                final filters = ref.watch(searchFiltersProvider);
+                if (!filters.womenSafetyMode) return const SizedBox.shrink();
+
+                // Check for any workers with riskScore > 0.3
+                final allWorkers = ref.watch(workersProvider);
+                final hasHighRisk = allWorkers.any((w) => w.riskScore > 0.3);
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (filters.riskMonitoring)
+                      hasHighRisk
+                          ? _SafetyStatusBadge(
+                              icon: Icons.warning_amber_rounded,
+                              label: 'ADVISORY: HIGH RISK AREA',
+                              reason:
+                                  'Suspicious behavior patterns detected nearby',
+                              color: const Color(0xFFDC2626),
+                            )
+                          : _SafetyStatusBadge(
+                              icon: Icons.verified_user_rounded,
+                              label: 'SECURE: SAFE AREA',
+                              reason:
+                                  'No suspicious activity detected in this zone',
+                              color: const Color(0xFF10B981),
+                            ),
+                    const SizedBox(height: 8),
+                    if (filters.liveTracking)
+                      _SafetyStatusBadge(
+                        icon: Icons.location_searching_rounded,
+                        label: filters.shareWithPrioritized &&
+                                ref
+                                        .watch(
+                                            emergencyContactsProvider.notifier)
+                                        .primaryContact !=
+                                    null
+                            ? 'LIVE: SHARING WITH ${ref.watch(emergencyContactsProvider.notifier).primaryContact?.name.toUpperCase()}'
+                            : 'LIVE: TRACKING SHARED',
+                        reason: filters.shareWithPrioritized
+                            ? 'Selected contact is receiving live updates'
+                            : 'Real-time location is being shared with contacts',
+                        color: const Color(0xFF6366F1),
+                      ),
+                  ],
+                );
+              },
             ),
           ),
 
@@ -270,6 +442,10 @@ class _FloatingFilterPanelState extends ConsumerState<_FloatingFilterPanel> {
   double _radiusKm = 5;
   bool _verifiedOnly = true;
   bool _highRating = true;
+  bool _womenSafetyMode = false;
+  String _genderPreference = 'any';
+  bool _liveTracking = false;
+  bool _riskMonitoring = false;
   final Set<ServiceCategory> _selectedCategories = {};
 
   @override
@@ -285,6 +461,45 @@ class _FloatingFilterPanelState extends ConsumerState<_FloatingFilterPanel> {
     _radiusKm = current.radiusKm.clamp(1.0, 20.0).toDouble();
     _verifiedOnly = current.verifiedOnly;
     _highRating = current.minRating >= 4.0;
+    _womenSafetyMode = current.womenSafetyMode;
+    _genderPreference = current.genderPreference;
+    _liveTracking = current.liveTracking;
+    _riskMonitoring = current.riskMonitoring;
+  }
+
+  Widget _buildGenderOption(String value, String label) {
+    final bool isSelected = _genderPreference == value;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          setState(() {
+            _genderPreference = value;
+          });
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected ? const Color(0xFF6366F1) : Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: isSelected
+                  ? const Color(0xFF6366F1)
+                  : const Color(0xFFE2E8F0),
+            ),
+          ),
+          child: Center(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+                color: isSelected ? Colors.white : const Color(0xFF64748B),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -353,7 +568,7 @@ class _FloatingFilterPanelState extends ConsumerState<_FloatingFilterPanel> {
                     label: category == ServiceCategory.roadsideAssistance
                         ? 'Roadside assistance'
                         : category.name[0].toUpperCase() +
-                              category.name.substring(1),
+                            category.name.substring(1),
                     selected: _selectedCategories.contains(category),
                     onTap: () {
                       setState(() {
@@ -416,6 +631,125 @@ class _FloatingFilterPanelState extends ConsumerState<_FloatingFilterPanel> {
                 });
               },
             ),
+            const SizedBox(height: 12),
+            // Gender Preference
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Gender Preference',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF1E293B),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    _buildGenderOption('any', 'ANY'),
+                    const SizedBox(width: 8),
+                    _buildGenderOption('female', 'FEMALE'),
+                    const SizedBox(width: 8),
+                    _buildGenderOption('male', 'MALE'),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            // Women Safety Mode Toggle
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: _womenSafetyMode
+                    ? const Color(0xFFFEF3C7)
+                    : const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: _womenSafetyMode
+                      ? const Color(0xFFD97706)
+                      : const Color(0xFFE2E8F0),
+                  width: 2,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: _womenSafetyMode
+                              ? const Color(0xFFD97706)
+                              : const Color(0xFF6366F1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(
+                          Icons.shield_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Women Safety Mode',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: _womenSafetyMode
+                                ? const Color(0xFF92400E)
+                                : const Color(0xFF1E293B),
+                          ),
+                        ),
+                      ),
+                      Switch(
+                        value: _womenSafetyMode,
+                        onChanged: (value) {
+                          setState(() {
+                            _womenSafetyMode = value;
+                            if (value) {
+                              _verifiedOnly = true;
+                              _highRating = true;
+                              _riskMonitoring = true;
+                            }
+                          });
+                        },
+                        activeColor: const Color(0xFFD97706),
+                        activeTrackColor:
+                            const Color(0xFFD97706).withOpacity(0.5),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Exclusive verified network & enhanced tracking',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF92400E),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (_womenSafetyMode) ...[
+                    const SizedBox(height: 12),
+                    _FilterToggleRow(
+                      label: 'Live Tracking',
+                      value: _liveTracking,
+                      onChanged: (value) =>
+                          setState(() => _liveTracking = value),
+                    ),
+                    const SizedBox(height: 8),
+                    _FilterToggleRow(
+                      label: 'Risk Monitor',
+                      value: _riskMonitoring,
+                      onChanged: (value) =>
+                          setState(() => _riskMonitoring = value),
+                    ),
+                  ],
+                ],
+              ),
+            ),
             const SizedBox(height: 20),
             Container(
               width: double.infinity,
@@ -434,14 +768,16 @@ class _FloatingFilterPanelState extends ConsumerState<_FloatingFilterPanel> {
                 onPressed: () {
                   // Apply filters
                   final currentFilters = ref.read(searchFiltersProvider);
-                  ref
-                      .read(searchFiltersProvider.notifier)
-                      .update(
+                  ref.read(searchFiltersProvider.notifier).update(
                         currentFilters.copyWith(
                           categories: _selectedCategories.toList(),
                           radiusKm: _radiusKm,
                           verifiedOnly: _verifiedOnly,
                           minRating: _highRating ? 4.0 : 0.0,
+                          womenSafetyMode: _womenSafetyMode,
+                          genderPreference: _genderPreference,
+                          liveTracking: _liveTracking,
+                          riskMonitoring: _riskMonitoring,
                         ),
                       );
                   widget.onClose();
@@ -544,22 +880,114 @@ class _WorkerListView extends ConsumerWidget {
   }
 }
 
-class _WorkerCardVertical extends StatelessWidget {
+class _PulsingSOSButton extends StatefulWidget {
+  const _PulsingSOSButton();
+
+  @override
+  State<_PulsingSOSButton> createState() => _PulsingSOSButtonState();
+}
+
+class _PulsingSOSButtonState extends State<_PulsingSOSButton>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(seconds: 2),
+      vsync: this,
+    )..repeat();
+    _animation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const SOSConfirmationScreen(),
+          ),
+        );
+      },
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          AnimatedBuilder(
+            animation: _animation,
+            builder: (context, child) {
+              return Container(
+                width: 56 + (40 * _animation.value),
+                height: 56 + (40 * _animation.value),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color:
+                      const Color(0xFFDC2626).withOpacity(1 - _animation.value),
+                ),
+              );
+            },
+          ),
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: const Color(0xFFDC2626),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFFDC2626).withOpacity(0.4),
+                  blurRadius: 16,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: const Icon(
+              Icons.emergency_rounded,
+              color: Colors.white,
+              size: 28,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WorkerCardVertical extends ConsumerWidget {
   final Worker worker;
 
   const _WorkerCardVertical({required this.worker});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final safetyMode = ref.watch(searchFiltersProvider).womenSafetyMode;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
+        border: safetyMode && worker.verified
+            ? Border.all(
+                color: const Color(0xFFD97706).withOpacity(0.3), width: 2)
+            : null,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
+            color: safetyMode && worker.verified
+                ? const Color(0xFFD97706).withOpacity(0.1)
+                : Colors.black.withOpacity(0.08),
             blurRadius: 12,
             offset: const Offset(0, 2),
           ),
@@ -569,23 +997,41 @@ class _WorkerCardVertical extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Avatar
-          Container(
-            width: 60,
-            height: 60,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: AppGradients.accentGradient,
-            ),
-            child: Center(
-              child: Text(
-                worker.name[0],
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 24,
+          Stack(
+            children: [
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: AppGradients.accentGradient,
+                ),
+                child: Center(
+                  child: Text(
+                    worker.name[0],
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 24,
+                    ),
+                  ),
                 ),
               ),
-            ),
+              if (worker.status == WorkerStatus.available)
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: Container(
+                    width: 14,
+                    height: 14,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF10B981),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
+                    ),
+                  ),
+                ),
+            ],
           ),
           const SizedBox(width: 16),
           // Worker details
@@ -598,10 +1044,10 @@ class _WorkerCardVertical extends StatelessWidget {
                     Expanded(
                       child: Text(
                         worker.name,
-                        style: const TextStyle(
-                          fontSize: 18,
+                        style: TextStyle(
+                          fontSize: safetyMode ? 19 : 18,
                           fontWeight: FontWeight.w800,
-                          color: Color(0xFF1E293B),
+                          color: const Color(0xFF1E293B),
                         ),
                       ),
                     ),
@@ -614,21 +1060,25 @@ class _WorkerCardVertical extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: const Color(0xFF10B981).withOpacity(0.15),
                           borderRadius: BorderRadius.circular(8),
+                          border: safetyMode
+                              ? Border.all(
+                                  color: const Color(0xFF10B981), width: 1)
+                              : null,
                         ),
-                        child: const Row(
+                        child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(
+                            const Icon(
                               Icons.verified_rounded,
                               size: 14,
                               color: Color(0xFF10B981),
                             ),
-                            SizedBox(width: 4),
+                            const SizedBox(width: 4),
                             Text(
-                              'Verified',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
+                              safetyMode ? 'Verified Check' : 'Verified',
+                              style: const TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
                                 color: Color(0xFF10B981),
                               ),
                             ),
@@ -637,7 +1087,75 @@ class _WorkerCardVertical extends StatelessWidget {
                       ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                if (worker.verified)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2, bottom: 4),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            worker.verificationLevel ==
+                                    VerificationLevel.fullyBackgroundChecked
+                                ? '✓ FULLY CHECKED'
+                                : worker.verificationLevel ==
+                                        VerificationLevel.governmentId
+                                    ? '✓ GOVT ID VERIFIED'
+                                    : '✓ VERIFIED',
+                            style: const TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF475569),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        if (safetyMode)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFECFDF5),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              'SAFE MATCH',
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF059669),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                if (safetyMode && worker.verified)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFEF3C7),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        '✓ BACKGROUND CHECKED',
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFFD97706),
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                  ),
                 Text(
                   worker.primaryCategory.name,
                   style: const TextStyle(
@@ -646,63 +1164,71 @@ class _WorkerCardVertical extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  worker.skills.join(' • '),
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF94A3B8),
-                    fontWeight: FontWeight.w500,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
                 const SizedBox(height: 12),
                 Row(
                   children: [
                     // Rating
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: safetyMode ? 10 : 8,
+                        vertical: safetyMode ? 6 : 4,
                       ),
                       decoration: BoxDecoration(
                         color: const Color(0xFFFBBF24).withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(6),
+                        borderRadius: BorderRadius.circular(8),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(
+                          Icon(
                             Icons.star,
-                            size: 14,
-                            color: Color(0xFFFBBF24),
+                            size: safetyMode ? 16 : 14,
+                            color: const Color(0xFFFBBF24),
                           ),
                           const SizedBox(width: 4),
                           Text(
                             worker.rating.toStringAsFixed(1),
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFFFBBF24),
+                            style: TextStyle(
+                              fontSize: safetyMode ? 14 : 12,
+                              fontWeight: FontWeight.w800,
+                              color: const Color(0xFFD97706),
                             ),
                           ),
                         ],
                       ),
                     ),
+                    const SizedBox(width: 12),
+                    if (safetyMode && worker.rating >= 4.5)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFECFDF5),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Text(
+                          'HIGH TRUST',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF059669),
+                          ),
+                        ),
+                      ),
                     const SizedBox(width: 8),
                     // Jobs completed
-                    Flexible(
-                      child: Text(
-                        '${worker.jobCount} jobs',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF64748B),
-                          fontWeight: FontWeight.w600,
+                    if (!safetyMode)
+                      Flexible(
+                        child: Text(
+                          '${worker.jobCount} jobs',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF64748B),
+                            fontWeight: FontWeight.w600,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        overflow: TextOverflow.ellipsis,
                       ),
-                    ),
                   ],
                 ),
               ],
@@ -1220,6 +1746,81 @@ class _WorkerDetailSheet extends StatelessWidget {
                   ),
                 ),
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SafetyStatusBadge extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String? reason;
+  final Color color;
+
+  const _SafetyStatusBadge({
+    required this.icon,
+    required this.label,
+    this.reason,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.12),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+        border: Border.all(color: color.withOpacity(0.4), width: 1.5),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, size: 16, color: color),
+          ),
+          const SizedBox(width: 10),
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                    color: color,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                if (reason != null)
+                  Text(
+                    reason!,
+                    style: TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w600,
+                      color: color.withOpacity(0.8),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+              ],
             ),
           ),
         ],

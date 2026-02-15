@@ -5,6 +5,8 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../../../core/ai/ai_providers.dart';
 import '../../../core/ai/gemini_service.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/emergency/emergency_providers.dart';
+import '../../emergency/sos_confirmation_screen.dart';
 import '../../discovery/presentation/worker_discovery_screen.dart';
 
 class VoiceAgentScreen extends ConsumerStatefulWidget {
@@ -87,9 +89,7 @@ class _VoiceAgentScreenState extends ConsumerState<VoiceAgentScreen> {
     if (mounted && interpretation != null) {
       // Update search filters based on interpretation
       final currentFilters = ref.read(searchFiltersProvider);
-      ref
-          .read(searchFiltersProvider.notifier)
-          .update(
+      ref.read(searchFiltersProvider.notifier).update(
             currentFilters.copyWith(
               serviceCategory: interpretation.serviceCategory,
             ),
@@ -224,6 +224,35 @@ class _VoiceAgentScreenState extends ConsumerState<VoiceAgentScreen> {
             ],
           ),
         ),
+      ),
+      floatingActionButton: Consumer(
+        builder: (context, ref, child) {
+          final canAccessSOS = ref.watch(canAccessSOSProvider);
+          final hasMinimumContacts =
+              ref.watch(emergencyContactsProvider).length >= 3;
+
+          if (!canAccessSOS || !hasMinimumContacts) {
+            return const SizedBox.shrink();
+          }
+
+          return FloatingActionButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const SOSConfirmationScreen(),
+                ),
+              );
+            },
+            backgroundColor: const Color(0xFFDC2626),
+            elevation: 8,
+            child: const Icon(
+              Icons.emergency_rounded,
+              color: Colors.white,
+              size: 28,
+            ),
+          );
+        },
       ),
     );
   }
@@ -565,7 +594,7 @@ class _VoiceListeningPanelState extends ConsumerState<_VoiceListeningPanel>
       pauseFor: const Duration(seconds: 3),
       partialResults: true,
       onDevice: false,
-      listenMode: stt.ListenMode.confirmation,
+      listenMode: stt.ListenMode.dictation,
     );
   }
 
@@ -1059,7 +1088,7 @@ class _VoiceListeningPanelState extends ConsumerState<_VoiceListeningPanel>
                 borderRadius: BorderRadius.circular(26),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF6366F1).withOpacity(0.3),
+                    color: Color.fromRGBO(99, 102, 241, 0.3),
                     blurRadius: 12,
                     offset: const Offset(0, 4),
                   ),

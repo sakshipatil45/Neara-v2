@@ -34,18 +34,20 @@ class _RootShell extends StatefulWidget {
 }
 
 class _RootShellState extends State<_RootShell> {
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   int _index = 0; // 0: Voice Agent, 1: Worker Discovery
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: _scaffoldKey,
       drawer: AppDrawer(onSelectScreen: _setScreenFromDrawer),
       body: SafeArea(
         child: IndexedStack(
           index: _index,
           children: [
             VoiceAgentScreen(
-              onOpenDrawer: () => Scaffold.of(context).openDrawer(),
+              onOpenDrawer: () => _scaffoldKey.currentState?.openDrawer(),
             ),
             const WorkerDiscoveryScreen(),
           ],

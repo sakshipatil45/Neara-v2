@@ -7,11 +7,9 @@ final geminiServiceProvider = Provider<GeminiService>((ref) {
   return GeminiService();
 });
 
-final emergencyInterpretationProvider =
-    StateNotifierProvider<
-      EmergencyController,
-      AsyncValue<EmergencyInterpretation?>
-    >((ref) => EmergencyController(ref));
+final emergencyInterpretationProvider = StateNotifierProvider<
+    EmergencyController,
+    AsyncValue<EmergencyInterpretation?>>((ref) => EmergencyController(ref));
 
 class EmergencyController
     extends StateNotifier<AsyncValue<EmergencyInterpretation?>> {
@@ -34,7 +32,9 @@ class EmergencyController
         if (permission == LocationPermission.always ||
             permission == LocationPermission.whileInUse) {
           final position = await Geolocator.getCurrentPosition(
-            desiredAccuracy: LocationAccuracy.high,
+            locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.high,
+            ),
           ).timeout(const Duration(seconds: 5));
           lat = position.latitude;
           lng = position.longitude;
@@ -83,8 +83,8 @@ class EmergencyController
 
 final searchFiltersProvider =
     StateNotifierProvider<SearchFiltersController, SearchFilters>((ref) {
-      return SearchFiltersController(ref);
-    });
+  return SearchFiltersController(ref);
+});
 
 class SearchFiltersController extends StateNotifier<SearchFilters> {
   SearchFiltersController(this._ref) : super(const SearchFilters());
@@ -93,9 +93,8 @@ class SearchFiltersController extends StateNotifier<SearchFilters> {
 
   Future<void> fromQuery(String query) async {
     try {
-      final aiFilters = await _ref
-          .read(geminiServiceProvider)
-          .interpretSearch(query);
+      final aiFilters =
+          await _ref.read(geminiServiceProvider).interpretSearch(query);
       state = aiFilters;
     } catch (_) {
       // Keep existing filters on failure.
