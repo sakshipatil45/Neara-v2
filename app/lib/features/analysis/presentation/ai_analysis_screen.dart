@@ -43,9 +43,7 @@ class _AIAnalysisScreenState extends ConsumerState<AIAnalysisScreen> {
       final allWorkers = ref.read(workersProvider);
       print('📋 Got ${allWorkers.length} workers');
 
-      final rankings = await ref
-          .read(workerServiceProvider)
-          .recommendWorkers(
+      final rankings = await ref.read(workerServiceProvider).recommendWorkers(
             interpretation: widget.interpretation,
             allWorkers: allWorkers,
           );
@@ -89,238 +87,240 @@ class _AIAnalysisScreenState extends ConsumerState<AIAnalysisScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: Colors.white,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-                      ),
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFF6366F1).withOpacity(0.3),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: const Icon(
-                      Icons.psychology,
-                      color: Colors.white,
-                      size: 32,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'AI Analysis',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 26,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: -0.5,
-                          ),
-                        ),
-                        SizedBox(height: 2),
-                        Text(
-                          'Understanding your request...',
-                          style: TextStyle(
-                            color: Color(0xFF94A3B8),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 32),
-
-              // User Message
-              Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1E293B),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: const Color(0xFF334155),
-                    width: 1.5,
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header
+                Row(
                   children: [
-                    const Row(
-                      children: [
-                        Icon(
-                          Icons.chat_bubble_outline,
-                          size: 16,
-                          color: Color(0xFF94A3B8),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
                         ),
-                        SizedBox(width: 6),
-                        Text(
-                          'Your Request',
-                          style: TextStyle(
-                            color: Color(0xFF94A3B8),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.5,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF6366F1).withOpacity(0.3),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      '"${widget.userMessage}"',
-                      style: const TextStyle(
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.psychology,
                         color: Colors.white,
-                        fontSize: 16,
-                        fontStyle: FontStyle.italic,
-                        height: 1.5,
+                        size: 32,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'AI Analysis',
+                            style: TextStyle(
+                              color: Color(0xFF0F172A),
+                              fontSize: 26,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -0.5,
+                            ),
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            'Understanding your request...',
+                            style: TextStyle(
+                              color: Color(0xFF64748B),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
-              ),
 
-              const SizedBox(height: 24),
+                const SizedBox(height: 32),
 
-              // Analysis Results
-              _buildAnalysisCard(
-                'Service Type',
-                widget.interpretation.serviceCategory.name.toUpperCase(),
-                Icons.build_circle,
-                const Color(0xFF6366F1),
-              ),
-
-              const SizedBox(height: 12),
-
-              _buildAnalysisCard(
-                'Urgency Level',
-                widget.interpretation.urgency.name.toUpperCase(),
-                Icons.priority_high,
-                _getUrgencyColor(widget.interpretation.urgency),
-              ),
-
-              const SizedBox(height: 12),
-
-              _buildAnalysisCard(
-                'AI Confidence',
-                '${(widget.interpretation.confidence * 100).toStringAsFixed(0)}%',
-                Icons.analytics_outlined,
-                const Color(0xFF10B981),
-              ),
-
-              if (widget.interpretation.riskFactors.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                _buildRiskFactorsCard(),
-              ],
-
-              const Spacer(),
-
-              // Continue button or loading indicator
-              if (_isRanking)
+                // User Message
                 Container(
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(18),
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        const Color(0xFF1E293B),
-                        const Color(0xFF1E293B).withOpacity(0.8),
-                      ],
-                    ),
+                    color: const Color(0xFFF1F5F9),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: const Color(0xFF6366F1).withOpacity(0.3),
+                      color: const Color(0xFFE2E8F0),
+                      width: 1.5,
                     ),
                   ),
-                  child: const Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                          color: Color(0xFF6366F1),
-                          strokeWidth: 3,
-                        ),
+                      const Row(
+                        children: [
+                          Icon(
+                            Icons.chat_bubble_outline,
+                            size: 16,
+                            color: Color(0xFF64748B),
+                          ),
+                          SizedBox(width: 6),
+                          const Text(
+                            'Your Request',
+                            style: TextStyle(
+                              color: Color(0xFF64748B),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ],
                       ),
-                      SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Finding Best Matches',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            SizedBox(height: 4),
-                            Text(
-                              'Ranking workers by skills, distance & availability',
-                              style: TextStyle(
-                                color: Color(0xFF94A3B8),
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
+                      const SizedBox(height: 10),
+                      Text(
+                        '"${widget.userMessage}"',
+                        style: const TextStyle(
+                          color: Color(0xFF1E293B),
+                          fontSize: 16,
+                          fontStyle: FontStyle.italic,
+                          height: 1.5,
                         ),
                       ),
                     ],
                   ),
-                )
-              else
-                // Continue button
-                SizedBox(
-                  width: double.infinity,
-                  height: 56,
-                  child: ElevatedButton(
-                    onPressed: _startWorkerRanking,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF6366F1),
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
+                ),
+
+                const SizedBox(height: 24),
+
+                // Analysis Results
+                _buildAnalysisCard(
+                  'Service Type',
+                  widget.interpretation.serviceCategory.name.toUpperCase(),
+                  Icons.build_circle,
+                  const Color(0xFF6366F1),
+                ),
+
+                const SizedBox(height: 12),
+
+                _buildAnalysisCard(
+                  'Urgency Level',
+                  widget.interpretation.urgency.name.toUpperCase(),
+                  Icons.priority_high,
+                  _getUrgencyColor(widget.interpretation.urgency),
+                ),
+
+                const SizedBox(height: 12),
+
+                _buildAnalysisCard(
+                  'AI Confidence',
+                  '${(widget.interpretation.confidence * 100).toStringAsFixed(0)}%',
+                  Icons.analytics_outlined,
+                  const Color(0xFF10B981),
+                ),
+
+                if (widget.interpretation.riskFactors.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  _buildRiskFactorsCard(),
+                ],
+
+                const SizedBox(height: 40), // Large spacing instead of Spacer
+
+                // Continue button or loading indicator
+                if (_isRanking)
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          const Color(0xFFF8FAFC),
+                          const Color(0xFFF8FAFC).withOpacity(0.8),
+                        ],
                       ),
-                      shadowColor: const Color(0xFF6366F1).withOpacity(0.4),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: const Color(0xFF6366F1).withOpacity(0.2),
+                      ),
                     ),
                     child: const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text(
-                          'Continue',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.5,
+                        SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            color: Color(0xFF6366F1),
+                            strokeWidth: 3,
                           ),
                         ),
-                        SizedBox(width: 8),
-                        Icon(Icons.arrow_forward, size: 24),
+                        SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Finding Best Matches',
+                                style: TextStyle(
+                                  color: Color(0xFF1E293B),
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                'Ranking workers by skills, distance & availability',
+                                style: TextStyle(
+                                  color: Color(0xFF64748B),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
+                  )
+                else
+                  // Continue button
+                  SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: ElevatedButton(
+                      onPressed: _startWorkerRanking,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF6366F1),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        shadowColor: const Color(0xFF6366F1).withOpacity(0.4),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            'Continue',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                          SizedBox(width: 8),
+                          Icon(Icons.arrow_forward, size: 24),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -336,7 +336,7 @@ class _AIAnalysisScreenState extends ConsumerState<AIAnalysisScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
+        color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: color.withOpacity(0.3), width: 1.5),
       ),
@@ -358,7 +358,7 @@ class _AIAnalysisScreenState extends ConsumerState<AIAnalysisScreen> {
                 Text(
                   label,
                   style: const TextStyle(
-                    color: Color(0xFF94A3B8),
+                    color: Color(0xFF64748B),
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                   ),
@@ -385,10 +385,10 @@ class _AIAnalysisScreenState extends ConsumerState<AIAnalysisScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF7F1D1D).withOpacity(0.3),
+        color: const Color(0xFFFEF2F2),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: const Color(0xFFEF4444).withOpacity(0.4),
+          color: const Color(0xFFFECACA),
           width: 1.5,
         ),
       ),

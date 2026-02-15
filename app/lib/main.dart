@@ -36,7 +36,6 @@ class _RootShell extends StatefulWidget {
 
 class _RootShellState extends State<_RootShell> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  int _index = 0; // 0: Voice Agent, 1: Worker Discovery
   int _index = 0; // 0: Voice Agent, 1: Worker Discovery, 2: Multilingual Demo
 
   @override

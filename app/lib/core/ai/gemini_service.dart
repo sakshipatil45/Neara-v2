@@ -127,7 +127,7 @@ class GeminiService {
   final http.Client _httpClient;
 
   GeminiService({http.Client? httpClient})
-    : _httpClient = httpClient ?? http.Client();
+      : _httpClient = httpClient ?? http.Client();
 
   /// Helper method to make OpenRouter API calls
   Future<String> _callOpenRouter({
@@ -381,8 +381,7 @@ class GeminiService {
       issueSummary: transcript.length > 50
           ? '${transcript.substring(0, 47)}...'
           : transcript,
-      urgency:
-          t.contains('urgent') ||
+      urgency: t.contains('urgent') ||
               t.contains('emergency') ||
               t.contains('fire') ||
               t.contains('danger')
@@ -500,10 +499,10 @@ class GeminiService {
       ..writeln(' "genderPreference": "any"|"female"|"male" }');
 
     try {
-      final response = await _model
-          .generateContent([Content.text(prompt.toString())]).timeout(
-              const Duration(seconds: 8));
-      final text = response.text ?? '{}';
+      final text = await _callOpenRouter(
+        systemPrompt: prompt.toString(),
+        userMessage: 'Map this query to filters: "$query"',
+      );
       final map = _safeDecodeJson(text);
 
       ServiceCategory? service;

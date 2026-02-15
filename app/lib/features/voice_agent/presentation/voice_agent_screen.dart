@@ -107,6 +107,7 @@ class _VoiceAgentScreenState extends ConsumerState<VoiceAgentScreen> {
           content: Text('Unable to process request. Please try again.'),
         ),
       );
+    }
     // Use unified request controller for consistent flow
     try {
       final controller = createRequestController(ref, context);
@@ -866,9 +867,8 @@ class _VoiceListeningPanelState extends ConsumerState<_VoiceListeningPanel>
               Navigator.of(context).pop(); // Close voice listening panel
 
               // Navigate to AI Analysis Screen using unified flow
-              final interpretation = ref
-                  .read(emergencyInterpretationProvider)
-                  .value;
+              final interpretation =
+                  ref.read(emergencyInterpretationProvider).value;
 
               if (interpretation != null && mounted) {
                 // Import AIAnalysisScreen at the top if not already imported

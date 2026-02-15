@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -1561,9 +1562,8 @@ class _WorkerCardHorizontal extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
-              color: isHighlighted
-                  ? Colors.white.withOpacity(0.9)
-                  : Colors.white,
+              color:
+                  isHighlighted ? Colors.white.withOpacity(0.9) : Colors.white,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

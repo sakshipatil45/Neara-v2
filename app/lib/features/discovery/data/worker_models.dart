@@ -40,6 +40,7 @@ class Worker {
     required this.gender,
     required this.latitude,
     required this.longitude,
+    required this.riskScore,
     this.status = WorkerStatus.available,
     this.responseTimeMinutes = 30,
   });

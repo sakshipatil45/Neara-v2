@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/emergency/emergency_providers.dart';
-import '../../../core/theme/app_theme.dart';
 
 import '../discovery/data/worker_models.dart';
 
@@ -57,7 +56,6 @@ class _SOSConfirmationScreenState extends ConsumerState<SOSConfirmationScreen>
   void _triggerSOS() async {
     if (_cancelled) return;
 
-    final contacts = ref.read(emergencyContactsProvider);
     final primaryContact =
         ref.read(emergencyContactsProvider.notifier).primaryContact;
 
