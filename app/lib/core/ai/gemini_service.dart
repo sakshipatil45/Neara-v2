@@ -68,6 +68,38 @@ class SearchFilters {
   }
 }
 
+class MultilingualResponse {
+  final String detectedLanguage;
+  final String selectedLanguage;
+  final String normalizedRequest;
+  final String serviceType;
+  final String responseText;
+  final double confidence;
+  final bool needsClarification;
+
+  MultilingualResponse({
+    required this.detectedLanguage,
+    required this.selectedLanguage,
+    required this.normalizedRequest,
+    required this.serviceType,
+    required this.responseText,
+    required this.confidence,
+    required this.needsClarification,
+  });
+
+  factory MultilingualResponse.fromJson(Map<String, dynamic> json) {
+    return MultilingualResponse(
+      detectedLanguage: json['detected_language'] as String? ?? 'en',
+      selectedLanguage: json['selected_language'] as String? ?? 'en',
+      normalizedRequest: json['normalized_request'] as String? ?? '',
+      serviceType: json['service_type'] as String? ?? 'other',
+      responseText: json['response_text'] as String? ?? '',
+      confidence: (json['confidence'] as num?)?.toDouble() ?? 0.0,
+      needsClarification: json['needs_clarification'] as bool? ?? false,
+    );
+  }
+}
+
 class GeminiService {
   // OpenRouter API configuration
   static const String _baseUrl =
@@ -211,6 +243,9 @@ class GeminiService {
         ..writeln(
           'Note: Use "Gas Service" for gas leaks, LPG issues, gas line problems, or gas appliance emergencies.',
         )
+        ..writeln(
+          '  "service_type": "mechanic | plumber | electrician | maid | roadside assistance | gas service | other",',
+        )
         ..writeln('  "urgency_level": "CRITICAL | HIGH | MEDIUM | LOW",')
         ..writeln('  "issue_summary": "Short 3-5 word title",')
         ..writeln('  "risk_factors": ["risk1", "risk2"],')
@@ -219,6 +254,7 @@ class GeminiService {
         ..writeln('  "needs_clarification": false')
         ..writeln('}')
         ..writeln('Rules:')
+        ..writeln('- service_type MUST be one of the English labels above.')
         ..writeln('- Confidence must be between 0.0 and 1.0.')
         ..writeln('- Confidence below 0.6 means ambiguity.')
         ..writeln('- Do not output anything outside JSON.');
@@ -322,6 +358,8 @@ class GeminiService {
         t.contains('accident') ||
         t.contains('stuck')) {
       category = ServiceCategory.roadsideAssistance;
+    } else if (t.contains('gas') || t.contains('leak') || t.contains('lpg')) {
+      category = ServiceCategory.gasService;
     }
 
     return EmergencyInterpretation(
@@ -500,6 +538,197 @@ class GeminiService {
       // Fall back quickly to current/default filters if AI is slow
       return const SearchFilters();
     }
+  }
+
+  Future<MultilingualResponse> processUserRequest({
+    required String transcript,
+    String selectedLanguage = 'auto',
+  }) async {
+    final prompt = StringBuffer()
+      ..writeln(
+        'You are a multilingual AI assistant for a voice-first hyperlocal service platform.',
+      )
+      ..writeln(
+        'Your role is to understand user requests spoken in natural language and respond in the user\'s selected language.',
+      )
+      ..writeln('Supported Languages:')
+      ..writeln('- English (en)')
+      ..writeln('- Hindi (hi)')
+      ..writeln('- Marathi (mr)')
+      ..writeln()
+      ..writeln('Core Responsibilities:')
+      ..writeln('1. Language Selection Priority')
+      ..writeln(
+        '- If selected_language is provided ("$selectedLanguage") -> ALWAYS respond in that language.',
+      )
+      ..writeln('- If selected_language = "auto" -> detect user language.')
+      ..writeln('- If detected language is unsupported -> default to English.')
+      ..writeln()
+      ..writeln('2. Multilingual Understanding')
+      ..writeln('You must understand requests even if they contain:')
+      ..writeln('- Mixed languages (Hinglish / Manglish / code-mixed)')
+      ..writeln('- Spelling errors')
+      ..writeln('- Incomplete sentences')
+      ..writeln('- Speech-to-text mistakes')
+      ..writeln('- Regional pronunciation variations')
+      ..writeln()
+      ..writeln('3. Normalization')
+      ..writeln(
+        'Convert user speech into a clean standardized request meaning.',
+      )
+      ..writeln('Example:')
+      ..writeln('"mera bike start nahi ho raha"')
+      ..writeln('-> normalized_request = "Bike not starting"')
+      ..writeln()
+      ..writeln('4. Translation Logic')
+      ..writeln('If spoken language != selected_language:')
+      ..writeln('- Understand original meaning')
+      ..writeln('- Translate internally')
+      ..writeln('- Respond only in selected_language')
+      ..writeln()
+      ..writeln('5. Response Style')
+      ..writeln('Responses must be:')
+      ..writeln('- Short')
+      ..writeln('- Clear')
+      ..writeln('- Friendly')
+      ..writeln('- Voice assistant friendly')
+      ..writeln('- Action oriented')
+      ..writeln()
+      ..writeln('6. Safety & Clarity Rule')
+      ..writeln(
+        'If request is unclear -> ask clarification question in selected_language.',
+      )
+      ..writeln()
+      ..writeln('7. Output Format')
+      ..writeln('Return ONLY JSON:')
+      ..writeln('{')
+      ..writeln('  "detected_language": "en | hi | mr",')
+      ..writeln('  "selected_language": "en | hi | mr",')
+      ..writeln(
+        '  "service_type": "mechanic | plumber | electrician | maid | roadside assistance | gas service | other",',
+      )
+      ..writeln('  "normalized_request": "",')
+      ..writeln('  "response_text": "",')
+      ..writeln('  "confidence": 0.0,')
+      ..writeln('  "needs_clarification": false')
+      ..writeln('}')
+      ..writeln()
+      ..writeln('Rules:')
+      ..writeln('- service_type MUST be one of the English labels above.')
+      ..writeln('- confidence must be between 0.0 and 1.0')
+      ..writeln('- response_text must always be in selected_language')
+      ..writeln('- never output text outside JSON')
+      ..writeln()
+      ..writeln('User Transcript: "$transcript"');
+
+    try {
+      final text = await _callOpenRouter(
+        systemPrompt: prompt.toString(),
+        userMessage: 'Interpret this request: "$transcript"',
+      );
+      final map = _safeDecodeJson(text);
+      return MultilingualResponse.fromJson(map);
+    } catch (e) {
+      throw Exception('AI response failed: $e');
+    }
+  }
+
+  Future<VoiceCommandInterpretation> interpretVoiceCommand(
+    String transcript,
+  ) async {
+    final prompt = StringBuffer()
+      ..writeln(
+        'You are a multilingual voice interpretation layer for an AI assistant.',
+      )
+      ..writeln('Your job is NOT to answer the user.')
+      ..writeln(
+        'Your job is to convert speech input into a standardized English intent so that downstream systems can process it.',
+      )
+      ..writeln()
+      ..writeln('Supported Input Languages:')
+      ..writeln('- English')
+      ..writeln('- Hindi')
+      ..writeln('- Marathi')
+      ..writeln()
+      ..writeln('TASKS')
+      ..writeln('1. Detect spoken language.')
+      ..writeln('2. Understand user intent even if:')
+      ..writeln('- grammar incorrect')
+      ..writeln('- mixed language')
+      ..writeln('- phonetic spelling')
+      ..writeln('- incomplete sentences')
+      ..writeln('- speech recognition mistakes')
+      ..writeln('3. Convert request into normalized English intent.')
+      ..writeln('Examples:')
+      ..writeln('"माझा पंखा चालत नाही" -> "Fan not working"')
+      ..writeln('"mera tyre puncture ho gaya" -> "Tyre puncture"')
+      ..writeln('"bike start nahi ho rahi" -> "Bike not starting"')
+      ..writeln('4. Extract emotional urgency tone from wording:')
+      ..writeln(
+        'Indicators: panic words, danger words, stress words, urgent phrases',
+      )
+      ..writeln('Return urgency_level: CRITICAL, HIGH, MEDIUM, LOW')
+      ..writeln('5. Keep normalized request short and structured.')
+      ..writeln('6. Do NOT respond conversationally.')
+      ..writeln('Do NOT answer user.')
+      ..writeln('Do NOT generate explanations.')
+      ..writeln()
+      ..writeln('OUTPUT FORMAT')
+      ..writeln('Return JSON only:')
+      ..writeln('{')
+      ..writeln('  "detected_language": "",')
+      ..writeln(
+        '  "service_type": "mechanic | plumber | electrician | maid | roadside assistance | gas service | other",',
+      )
+      ..writeln('  "normalized_intent": "",')
+      ..writeln('  "urgency_level": "",')
+      ..writeln('  "confidence": 0.0')
+      ..writeln('}')
+      ..writeln()
+      ..writeln('Rules:')
+      ..writeln('- service_type MUST be one of the English labels above.')
+      ..writeln('- normalized_intent MUST be in English')
+      ..writeln('- confidence must be 0.0–1.0')
+      ..writeln('- No extra text outside JSON')
+      ..writeln()
+      ..writeln('Input transcript: "$transcript"');
+
+    try {
+      final text = await _callOpenRouter(
+        systemPrompt: prompt.toString(),
+        userMessage: 'Normalize this transcript: "$transcript"',
+      );
+      final map = _safeDecodeJson(text);
+      return VoiceCommandInterpretation.fromJson(map);
+    } catch (e) {
+      throw Exception('AI response failed: $e');
+    }
+  }
+}
+
+class VoiceCommandInterpretation {
+  final String detectedLanguage;
+  final String serviceType;
+  final String normalizedIntent;
+  final String urgencyLevel;
+  final double confidence;
+
+  VoiceCommandInterpretation({
+    required this.detectedLanguage,
+    required this.serviceType,
+    required this.normalizedIntent,
+    required this.urgencyLevel,
+    required this.confidence,
+  });
+
+  factory VoiceCommandInterpretation.fromJson(Map<String, dynamic> json) {
+    return VoiceCommandInterpretation(
+      detectedLanguage: json['detected_language'] as String? ?? 'en',
+      serviceType: json['service_type'] as String? ?? 'other',
+      normalizedIntent: json['normalized_intent'] as String? ?? '',
+      urgencyLevel: json['urgency_level'] as String? ?? 'LOW',
+      confidence: (json['confidence'] as num?)?.toDouble() ?? 0.0,
+    );
   }
 }
 

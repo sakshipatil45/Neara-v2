@@ -312,3 +312,34 @@ class WorkerService {
     return score.clamp(0.0, 100.0);
   }
 }
+
+final multilingualAssistantProvider =
+    StateNotifierProvider<
+      MultilingualController,
+      AsyncValue<MultilingualResponse?>
+    >((ref) => MultilingualController(ref));
+
+class MultilingualController
+    extends StateNotifier<AsyncValue<MultilingualResponse?>> {
+  MultilingualController(this._ref) : super(const AsyncValue.data(null));
+
+  final Ref _ref;
+
+  Future<void> processRequest(
+    String transcript, {
+    String selectedLanguage = 'auto',
+  }) async {
+    state = const AsyncValue.loading();
+    try {
+      final result = await _ref
+          .read(geminiServiceProvider)
+          .processUserRequest(
+            transcript: transcript,
+            selectedLanguage: selectedLanguage,
+          );
+      state = AsyncValue.data(result);
+    } catch (e, stack) {
+      state = AsyncValue.error(e, stack);
+    }
+  }
+}
